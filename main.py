@@ -7,7 +7,7 @@ import action
 import logging
 
 # 配置日志
-logging.basicConfig(level=logging.DEBUG,
+logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] [%(levelname)s] %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
@@ -25,7 +25,8 @@ def load_plugins():
             if callable(attribute) and hasattr(attribute, '_bot_command'):
                 command = getattr(attribute, '_bot_command')
                 if command not in command_reg:
-                    command_reg[command] = attribute
+                    permission = getattr(attribute, '_permission')
+                    command_reg[command] = {'func': attribute, 'perm': permission}
                     logging.info(f"命令 {command} 已加载")
                 else:
                     logging.warning(f"命令 '{command}' 在 {name} 模块中被重复定义")
@@ -70,15 +71,52 @@ def on_message(ws: websocket.WebSocket, data):
                 logging.info("Received:", data)
 
 
+def command_handler(ws: websocket.WebSocket, data: dict, *, is_group: bool = False) -> None:
+    # 切片信息
+    message: list = data["raw_message"].split(' ')
+
+    if is_group and GROUP_CHAT_REQUIRE_AT:
+        if isinstance(data['message'], list):
+            if data['message'][0] == {'data': {'qq': '3528019695'}, 'type': 'at'}:
+                message.pop(0)
+
+            else:
+                logging.debug(f'用户未@我 忽略')
+
+        else:
+            logging.debug(f'用户未@我 忽略')
+
+    # 检查命令是否以特定标识开头
+    if COMMAND_START:
+        if message[0][0] == COMMAND_START and message[0][1:] in command_reg:
+            if command_reg[message[0][1:]]['perm'](action.CheckPermission(data)):
+                command_reg[message[0][1:]]['func'](action.Command(ws, data))
+
+                logging.info(f'运行命令 {message[0][1:]}')
+
+            else:
+                logging.info(f'未达到命令 {message[0][1:]} 的执行条件')
+
+        else:
+            logging.debug(f'{message[0]} 不是一条命令')
+
+    elif message[0] in command_reg:
+        if command_reg[message[0]]['perm'](action.CheckPermission(data)):
+            command_reg[message[0]]['func'](action.Command(ws, data))
+
+        else:
+            logging.info(f'未达到命令 {message[0][1:]} 的执行条件')
+
+    else:
+        logging.debug(f'{message[0]} 不是一条命令')
+
+
 # 处理私聊消息
 def private_message(ws: websocket.WebSocket, data: dict) -> None:
     logging.info(
         f'收到好友 {data["sender"]["nickname"]}({data["sender"]["user_id"]}) 的消息： {data["raw_message"]} ({data["message_id"]})')
 
-    if data["raw_message"] in command_reg:
-        command_reg[data["raw_message"]](action.Command(ws, data))
-    else:
-        print(f"未知命令: {data["raw_message"]}")
+    command_handler(ws, data)
 
 
 # 处理群聊消息
@@ -87,10 +125,7 @@ def group_message(ws: websocket.WebSocket, data: dict) -> None:
         f'收到群 {action.Command(ws, data).action("get_group_info", {"group_id": data["group_id"]})["data"]["group_name"]}({data["group_id"]}) 内 \
 {data["sender"]["nickname"] if not data["sender"]["card"] else data["sender"]["card"]}({data["sender"]["user_id"]}) 的消息: {data["raw_message"]} ({data["message_id"]})')
 
-    if data["raw_message"] in command_reg:
-        command_reg[data["raw_message"]](action.Command(ws, data))
-    else:
-        print(f"未知命令: {data["raw_message"]}")
+    command_handler(ws, data, is_group=True)
 
 
 def on_error(ws, error):
@@ -131,8 +166,11 @@ def main():
 
 
 # WebSocket URL
-websocket_url = "ws://192.168.3.211:5801"
+websocket_url: str = "ws://192.168.3.211:5801"
 connected_event = threading.Event()
+
+COMMAND_START: str = '/'
+GROUP_CHAT_REQUIRE_AT: bool = False
 
 if __name__ == '__main__':
     main()

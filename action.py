@@ -15,9 +15,16 @@ def bot_command(command, *, permission=...):
     def decorator(func):
         # 给函数添加一个特定的属性，而不是立即注册
         func._bot_command = command
+        func._permission = permission
         return func
 
     return decorator
+
+
+class CheckPermission:
+    def __init__(self, data: dict):
+        self.is_private_chat: bool = data.get('message_type') == 'private'
+        self.is_group_chat: bool = data.get('message_type') == 'group'
 
 
 def echo_check(data: dict):
