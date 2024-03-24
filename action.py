@@ -4,49 +4,28 @@ import queue
 import threading
 import uuid
 import json
+from typing import Callable
 
 # echo返回等待事件队列
 echo_events = defaultdict(
     lambda: {"event": threading.Event(), "queue": queue.Queue()})
 
 
-# 命令装饰器
-def bot_command(command, *, permission=...):
-    def decorator(func):
-        # 给函数添加一个特定的属性，而不是立即注册
-        func._bot_command = command
-        func._permission = permission
-        return func
-
-    return decorator
-
-
 class CheckPermission:
     def __init__(self, data: dict):
         self.is_private_chat: bool = data.get('message_type') == 'private'
         self.is_group_chat: bool = data.get('message_type') == 'group'
-
-
-def echo_check(data: dict):
-    echo = data.get('echo')
-    # 检查echo存在性 顺带一提含echo的信息没有post_type
-    if echo and echo in echo_events:
-        # 将特定echo返回的信息加入独立队列
-        echo_events[echo]["queue"].put(data)
-
-        # 停止send_event线程的阻塞
-        echo_events[echo]["event"].set()
-
-        return True
+        self.user_id: int = data.get('user_id')
+        self.user_id: int | None = data.get('group_id')
 
 
 class Command:
-    def __init__(self, ws: websocket.WebSocket, data: dict):
+    def __init__(self, ws: websocket.WebSocket, data: dict = None):
         self.data = data
         self.ws = ws
 
     # 发送请求 在非多线程执行时要 小 心 阻 塞
-    def action(self, action: str, params: dict, *, echo_needed: bool = True,
+    def action(self, action: str, params: dict = None, *, echo_needed: bool = True,
                timeout=5) -> None | dict:
         """
         向shamrock发送制定接口的请求
@@ -64,6 +43,9 @@ class Command:
             echo = str(uuid.uuid4())
         else:
             echo = None
+
+        if params is None:
+            params = {}
 
         data = {
             "action": action,
@@ -106,6 +88,10 @@ class Command:
         :param timeout: 等待响应的秒数
         :return: 当接收到响应时返回响应（message_id: int 消息 ID, time: int64 时间戳） 无响应时返回None
         """
+
+        if self.data is None:
+            print('在未给予data的情况下执行了send 是否意外在定时任务中使用了自适应send？')
+            return
 
         ws = self.ws
 
@@ -187,3 +173,55 @@ class Command:
                            data,
                            echo_needed=echo_needed,
                            timeout=timeout)
+
+
+# 命令装饰器
+def bot_command(command, *, permission: Callable[[CheckPermission], bool] = lambda sender: True):
+    """
+
+    :param command: 命令的触发关键词
+    :param permission: 一个接收CheckPermission类的函数，返回值决定了触发关键词时这条命令是否执行。不添加时默认所有人在所有环境里都可以触发
+    :return:
+    """
+
+    def decorator(func):
+        # 标记函数为一条命令
+        func._bot_command = command
+        func._permission = permission
+        return func
+
+    return decorator
+
+
+# 定时任务装饰器
+def scheduled_job(*, every: int = 1, freq: str = ..., at: str = None):
+    """
+
+    :param every: 每 n freq执行
+    :param freq: day, hour, minute 或 second
+    :param at: 只有在 day 和 hour 可以使用。用于在特定时间点执行 day时格式必须为 HH:MM hour时格式必须为 :MM
+    :return:
+    """
+
+    def decorator(func):
+        # 给函数添加一个特定的属性，而不是立即注册
+        func._scheduled_job = True
+        func._every = every
+        func._freq = freq
+        func._at = at
+        return func
+
+    return decorator
+
+
+def echo_check(data: dict):
+    echo = data.get('echo')
+    # 检查echo存在性 顺带一提含echo的信息没有post_type
+    if echo and echo in echo_events:
+        # 将特定echo返回的信息加入独立队列
+        echo_events[echo]["queue"].put(data)
+
+        # 停止send_event线程的阻塞
+        echo_events[echo]["event"].set()
+
+        return True
