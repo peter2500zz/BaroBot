@@ -1,6 +1,5 @@
 import importlib
 import pkgutil
-import time
 import websocket
 import threading
 import json
@@ -96,7 +95,7 @@ def on_message(ws: websocket.WebSocket, data):
                         logging.debug(f'接收到心跳 echo队列长度为 {len(action.echo_events)}')
 
                     case _:
-                        logging.info("Received:", data)
+                        logging.info(f"Received: {data}")
 
             # 提示类型
             case 'notice':
@@ -106,7 +105,7 @@ def on_message(ws: websocket.WebSocket, data):
                                          args=(ws, data)).start()
 
                     case _:
-                        logging.info("Received:", data)
+                        logging.info(f"Received: {data}")
 
             # 消息类型
             case "message":
@@ -120,10 +119,10 @@ def on_message(ws: websocket.WebSocket, data):
                         threading.Thread(target=group_message,
                                          args=(ws, data)).start()
                     case _:
-                        logging.info("Received:", data)
+                        logging.info(f"Received: {data}")
 
             case _:
-                logging.info("Received:", data)
+                logging.info(f"Received: {data}")
 
 
 def command_handler(ws: websocket.WebSocket, data: dict, *, is_group: bool = False) -> None:

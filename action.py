@@ -16,7 +16,7 @@ class CheckPermission:
         self.is_private_chat: bool = data.get('message_type') == 'private'
         self.is_group_chat: bool = data.get('message_type') == 'group'
         self.user_id: int = data.get('user_id')
-        self.user_id: int | None = data.get('group_id')
+        self.group_id: int | None = data.get('group_id')
 
 
 class Command:
@@ -173,6 +173,17 @@ class Command:
                            data,
                            echo_needed=echo_needed,
                            timeout=timeout)
+
+    def group_whole_ban(self, group_id: int, enable: bool = True) -> None:
+        """
+        设置全体禁言
+
+        :param group_id: 群号
+        :param enable: 是否打开全体禁言
+        :return:
+        """
+        return self.action('set_group_whole_ban',
+                           {'group_id': group_id, 'enable': enable})
 
 
 # 命令装饰器
